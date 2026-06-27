@@ -1,0 +1,339 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=Inter:wght@400;500;600&display=swap');
+
+:root {
+  --sky: #0EA5E9;
+  --sky-dark: #0369A1;
+  --dusk: #1E293B;
+  --cloud: #F1F5F9;
+  --mist: #94A3B8;
+  --white: #FFFFFF;
+  --green: #10B981;
+  --amber: #F59E0B;
+  --red: #EF4444;
+
+  --font-display: 'DM Serif Display', Georgia, serif;
+  --font-body: 'Inter', system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-body);
+  background: var(--cloud);
+  color: var(--dusk);
+  min-height: 100vh;
+}
+
+.hero {
+  background: var(--dusk);
+  padding: 3rem 1.5rem 4rem;
+  text-align: center;
+}
+
+.hero h1 {
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 5vw, 3.5rem);
+  color: var(--white);
+  line-height: 1.1;
+  margin-bottom: 0.5rem;
+}
+
+.hero h1 em {
+  color: var(--sky);
+  font-style: italic;
+}
+
+.hero p {
+  color: var(--mist);
+  font-size: 1rem;
+  margin-bottom: 2rem;
+}
+
+.search-bar {
+  display: flex;
+  max-width: 640px;
+  margin: 0 auto;
+  gap: 0.5rem;
+  background: var(--white);
+  border-radius: 12px;
+  padding: 0.5rem;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.2);
+}
+
+.search-bar input {
+  flex: 1;
+  border: none;
+  outline: none;
+  font-family: var(--font-body);
+  font-size: 1rem;
+  color: var(--dusk);
+  padding: 0.5rem 0.75rem;
+  background: transparent;
+}
+
+.search-bar input::placeholder {
+  color: var(--mist);
+}
+
+.search-bar button {
+  background: var(--sky);
+  color: var(--white);
+  border: none;
+  border-radius: 8px;
+  padding: 0.625rem 1.25rem;
+  font-family: var(--font-body);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+
+.search-bar button:hover {
+  background: var(--sky-dark);
+}
+
+.search-bar button:disabled {
+  background: var(--mist);
+  cursor: not-allowed;
+}
+
+.results-section {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 2.5rem 1.5rem;
+}
+
+.recommendation-box {
+  background: var(--white);
+  border-left: 4px solid var(--sky);
+  border-radius: 8px;
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 2rem;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+.recommendation-box .label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--sky);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 0.4rem;
+}
+
+.recommendation-box p {
+  font-size: 0.95rem;
+  line-height: 1.6;
+  color: var(--dusk);
+}
+
+.recommendation-box .tradeoffs {
+  margin-top: 0.6rem;
+  color: var(--mist);
+  font-size: 0.875rem;
+}
+
+.packages-grid {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.package-card {
+  background: var(--white);
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+  transition: box-shadow 0.15s;
+}
+
+.package-card:hover {
+  box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+}
+
+.package-card.top-pick {
+  border: 2px solid var(--sky);
+}
+
+.top-badge {
+  background: var(--sky);
+  color: var(--white);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 0.3rem 1rem;
+}
+
+.card-body {
+  padding: 1.25rem 1.5rem;
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 1rem;
+  align-items: start;
+}
+
+@media (max-width: 600px) {
+  .card-body {
+    grid-template-columns: 1fr;
+  }
+}
+
+.card-section-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--mist);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 0.35rem;
+}
+
+.weekend-label {
+  font-family: var(--font-display);
+  font-size: 1.3rem;
+  color: var(--dusk);
+  margin-bottom: 0.2rem;
+}
+
+.flight-detail, .hotel-detail {
+  font-size: 0.9rem;
+  color: var(--dusk);
+  line-height: 1.5;
+}
+
+.hotel-score {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  background: var(--green);
+  color: white;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+  margin-top: 0.3rem;
+}
+
+.price-col {
+  text-align: right;
+}
+
+.total-price {
+  font-family: var(--font-display);
+  font-size: 1.8rem;
+  color: var(--dusk);
+  line-height: 1;
+}
+
+.price-breakdown {
+  font-size: 0.75rem;
+  color: var(--mist);
+  margin-top: 0.2rem;
+  line-height: 1.5;
+}
+
+.saving-badge {
+  display: inline-block;
+  background: #DCFCE7;
+  color: #166534;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  margin-top: 0.4rem;
+}
+
+.card-footer {
+  border-top: 1px solid var(--cloud);
+  padding: 0.875rem 1.5rem;
+  display: flex;
+  gap: 0.75rem;
+  justify-content: flex-end;
+}
+
+.btn-flight {
+  background: var(--dusk);
+  color: var(--white);
+  text-decoration: none;
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  transition: opacity 0.15s;
+}
+
+.btn-hotel {
+  background: var(--sky);
+  color: var(--white);
+  text-decoration: none;
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  transition: opacity 0.15s;
+}
+
+.btn-flight:hover, .btn-hotel:hover {
+  opacity: 0.85;
+}
+
+.loading {
+  text-align: center;
+  padding: 3rem 1.5rem;
+}
+
+.loading-spinner {
+  width: 36px;
+  height: 36px;
+  border: 3px solid var(--cloud);
+  border-top-color: var(--sky);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin: 0 auto 1rem;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.loading p {
+  color: var(--mist);
+  font-size: 0.95rem;
+}
+
+.error-box {
+  background: #FEF2F2;
+  border: 1px solid #FECACA;
+  color: #991B1B;
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  font-size: 0.9rem;
+}
+
+.examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
+  margin-top: 1rem;
+}
+
+.example-chip {
+  background: rgba(255,255,255,0.1);
+  color: var(--mist);
+  border: 1px solid rgba(255,255,255,0.15);
+  border-radius: 20px;
+  padding: 0.35rem 0.85rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.example-chip:hover {
+  background: rgba(255,255,255,0.18);
+  color: var(--white);
+}
