@@ -1,13 +1,33 @@
+export interface HotelPreferences {
+  neighbourhood: string | null;       // e.g. "Jordaan", "city centre"
+  stars: number | null;               // minimum star rating e.g. 4
+  specificHotel: string | null;       // exact hotel name if user specified one
+  amenities: string[];                // e.g. ["pool", "breakfast included"]
+  pricePerNightMax: number | null;    // maximum price per night in EUR
+  freeText: string;                   // any other preferences not captured above
+}
+
+export interface FlightPreferences {
+  preferredAirlines: string[];        // e.g. ["SAS", "Norwegian"]
+  maxStops: number | null;            // 0 = direct only
+  preferredDepartureTime: 'morning' | 'afternoon' | 'evening' | null;
+  maxDurationHours: number | null;
+}
+
 export interface ParsedIntent {
-  origin: string;           // e.g. "OSL"
-  originCity: string;       // e.g. "Oslo"
-  destination: string;      // e.g. "AMS"
-  destinationCity: string;  // e.g. "Amsterdam"
-  dateRangeStart: string;   // ISO date e.g. "2025-03-01"
-  dateRangeEnd: string;     // ISO date e.g. "2025-04-30"
-  budgetSignal: 'budget' | 'mid' | 'comfort' | 'unspecified';
-  hotelPreferences: string[]; // e.g. ["central", "walking distance to museums"]
+  origin: string;                     // e.g. "OSL"
+  originCity: string;                 // e.g. "Oslo"
+  destination: string;                // e.g. "AMS"
+  destinationCity: string;            // e.g. "Amsterdam"
+  dateRangeStart: string;             // ISO date e.g. "2025-03-01"
+  dateRangeEnd: string;               // ISO date e.g. "2025-04-30"
+  budgetSignal: 'budget' | 'mid' | 'comfort' | 'luxury' | 'unspecified';
+  hotelPreferences: HotelPreferences;
+  flightPreferences: FlightPreferences;
   flexibility: 'any_weekend' | 'specific_weekends';
+  searchMode: 'package' | 'hotel_led' | 'flight_led';
+  sources: Array<'booking' | 'agoda' | 'hotels_com'>;
+  rawQuery: string;
 }
 
 export interface FlightOption {

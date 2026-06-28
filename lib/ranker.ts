@@ -47,7 +47,9 @@ Respond with JSON only. No markdown. Schema:
 
 User preferences: ${JSON.stringify({
   budgetSignal: intent.budgetSignal,
+  searchMode: intent.searchMode || 'package',
   hotelPreferences: intent.hotelPreferences,
+  flightPreferences: intent.flightPreferences,
 })}
 
 Packages to rank:
@@ -57,13 +59,14 @@ ${JSON.stringify(packageSummary, null, 2)}`,
   });
 
   const text = response.content[0].type === 'text' ? response.content[0].text : '{}';
+  const clean = text.replace(/```json|```/g, '').trim();
 
   try {
-    const parsed = JSON.parse(text);
+    const parsed = JSON.parse(clean);
     const rankedPackages = (parsed.rankedOrder as number[])
       .map((i: number) => packages[i - 1])
       .filter(Boolean)
-      .slice(0, 3); // Surface top 3
+      .slice(0, 3);
 
     return {
       packages: rankedPackages,
@@ -71,7 +74,6 @@ ${JSON.stringify(packageSummary, null, 2)}`,
       tradeoffs: parsed.tradeoffs || '',
     };
   } catch {
-    // Fallback: return sorted by total cost
     return {
       packages: packages.slice(0, 3),
       recommendation: `Best value option: ${packages[0]?.weekendLabel} at €${packages[0]?.totalCost} total.`,

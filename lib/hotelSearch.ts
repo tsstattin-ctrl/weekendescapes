@@ -1,6 +1,21 @@
 import { HotelOption, ParsedIntent } from './types';
 import { buildCacheKey, getCached, setCache } from './cache';
 
+const BOOKING_BASE = 'https://distribution-xml.booking.com/2.0/json';
+
+const CITY_DEST_IDS: Record<string, string> = {
+  AMS: '-2140479',
+  LON: '-2601889',
+  PAR: '-1456928',
+  BCN: '-372490',
+  CPH: '-2745636',
+  BER: '-1746443',
+  ROM: '-126693',
+  PRG: '-553173',
+  VIE: '-1995499',
+  LIS: '-2167973',
+};
+
 const MOCK_HOTELS: HotelOption[] = [
   {
     name: 'Hotel V Nesplein',
@@ -52,6 +67,17 @@ const MOCK_HOTELS: HotelOption[] = [
   },
 ];
 
+function buildAffiliateUrl(hotelId: string, checkin: string, checkout: string, affiliateId: string): string {
+  const params = new URLSearchParams({
+    aid: affiliateId,
+    hotel_id: hotelId,
+    checkin,
+    checkout,
+    label: 'weekendescapes',
+  });
+  return `https://www.booking.com/hotel/nl/${hotelId}.html?${params}`;
+}
+
 export async function searchHotels(
   intent: ParsedIntent,
   checkin: string,
@@ -61,8 +87,16 @@ export async function searchHotels(
   const cached = getCached<HotelOption[]>(cacheKey);
   if (cached) return cached;
 
-  // Shuffle slightly so different weekends get different hotel orderings
+  // Use mock data until Booking.com affiliate is approved
   const shuffled = [...MOCK_HOTELS].sort(() => Math.random() - 0.5);
-  setCache(cacheKey, shuffled);
-  return shuffled;
+
+  // Filter by star rating if user specified one
+  const hotelPrefs = intent.hotelPreferences;
+  const minStars = hotelPrefs?.stars || null;
+  const filtered = minStars
+    ? shuffled.filter(h => h.stars >= minStars)
+    : shuffled;
+
+  setCache(cacheKey, filtered);
+  return filtered;
 }
