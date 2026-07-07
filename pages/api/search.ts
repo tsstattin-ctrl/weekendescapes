@@ -6,6 +6,18 @@ import { buildPackages } from '../../lib/packageBuilder';
 import { rankPackages } from '../../lib/ranker';
 import { HotelOption, RankedResult } from '../../lib/types';
 
+// Extract just the date part from datetime strings like "2026-07-24 18:50" or "2026-07-24T18:50"
+function extractDate(datetime: string): string {
+  return datetime.split('T')[0].split(' ')[0];
+}
+
+// Add N days to a YYYY-MM-DD date string
+function addDays(dateStr: string, days: number): string {
+  const d = new Date(dateStr);
+  d.setDate(d.getDate() + days);
+  return d.toISOString().split('T')[0];
+}
+
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse<RankedResult | { error: string }>
@@ -42,8 +54,11 @@ export default async function handler(
 
     const topFlights = flights.slice(0, 3);
     for (const flight of topFlights) {
-      const checkin = flight.outbound.departure.split('T')[0];
-      const checkout = flight.inbound.departure.split('T')[0];
+      // Extract just the date part from the departure datetime
+      const checkin = extractDate(flight.outbound.departure);
+      // Checkout is always checkin + 2 days (Friday → Sunday)
+      const checkout = addDays(checkin, 2);
+
       console.log(`[search] Fetching hotels for ${flight.weekendLabel} (${checkin} - ${checkout})`);
       const hotels = await searchHotels(intent, checkin, checkout);
       console.log(`[search] Got ${hotels.length} hotels for ${flight.weekendLabel}`);
