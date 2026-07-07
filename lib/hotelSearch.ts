@@ -131,7 +131,7 @@ async function fetchHotelsForDates(
         location: meta.address || cityInfo.cityName,
         distanceFromCenter: '',
         thumbnailUrl: meta.main_photo || meta.mainPhoto || meta.thumbnail || '',
-        affiliateUrl: buildBookingUrl(checkinFormatted, checkoutFormatted, cityInfo.cityName, affiliateId),
+        affiliateUrl: buildBookingUrl(checkinFormatted, checkoutFormatted, meta.name || cityInfo.cityName, affiliateId),
       };
     })
     .filter((h: HotelOption) => h.totalPrice > 0);
