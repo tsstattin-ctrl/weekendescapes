@@ -26,10 +26,7 @@ const CITY_MAP: Record<string, { countryCode: string; cityName: string }> = {
 
 function formatDate(dateStr: string): string {
   const d = new Date(dateStr);
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 function sleep(ms: number): Promise<void> {
@@ -45,39 +42,6 @@ function buildBookingUrl(checkin: string, checkout: string, cityName: string, af
     ss: cityName,
   });
   return `https://www.booking.com/search.html?${params}`;
-}
-
-// Fetch hotel name and metadata from /data/hotels endpoint using hotelIds
-async function fetchHotelNames(hotelIds: string[], apiKey: string): Promise<Map<string, any>> {
-  const nameMap = new Map<string, any>();
-  if (hotelIds.length === 0) return nameMap;
-
-  try {
-    const params = new URLSearchParams();
-    hotelIds.forEach(id => params.append('hotelIds', id));
-
-    const response = await fetch(`${LITEAPI_BASE}/data/hotels?${params}`, {
-      headers: {
-        'accept': 'application/json',
-        'X-API-Key': apiKey,
-      },
-    });
-
-    if (!response.ok) {
-      console.error('LiteAPI hotel names error:', response.status);
-      return nameMap;
-    }
-
-    const data = await response.json();
-    const hotels = data.data || [];
-    for (const h of hotels) {
-      nameMap.set(h.id || h.hotelId, h);
-    }
-  } catch (err) {
-    console.error('Hotel name lookup failed:', err);
-  }
-
-  return nameMap;
 }
 
 async function fetchHotelsForDates(
@@ -106,6 +70,7 @@ async function fetchHotelsForDates(
     cityName: cityInfo.cityName,
     limit: 6,
     timeout: 8,
+    includeHotelData: true,  // Returns a separate 'hotels' array with names/photos
   };
 
   if (minStars) ratesBody.starRating = [minStars];
@@ -130,15 +95,20 @@ async function fetchHotelsForDates(
 
   const ratesData = await ratesResponse.json();
   const hotels = ratesData.data || [];
+  // When includeHotelData=true, hotel metadata is in a separate 'hotels' array
+  const hotelsMeta = ratesData.hotels || [];
+
+  // Build a lookup map: hotelId -> metadata
+  const metaMap = new Map<string, any>();
+  for (const m of hotelsMeta) {
+    metaMap.set(m.id || m.hotelId, m);
+  }
+
   if (hotels.length === 0) return [];
 
   const nights = Math.round(
     (new Date(checkoutFormatted).getTime() - new Date(checkinFormatted).getTime()) / (1000 * 60 * 60 * 24)
   );
-
-  // Fetch hotel names in a single batch call
-  const hotelIds = hotels.map((h: any) => h.hotelId).filter(Boolean);
-  const hotelMetadata = await fetchHotelNames(hotelIds, apiKey);
 
   return hotels
     .slice(0, 6)
@@ -148,21 +118,19 @@ async function fetchHotelsForDates(
       const totalPrice = Math.round(totalAmount);
       const pricePerNight = nights > 0 ? Math.round(totalAmount / nights) : totalPrice;
 
-      // Get hotel metadata from the names lookup
-      const meta = hotelMetadata.get(h.hotelId) || {};
+      // Get metadata from the hotels array
+      const meta = metaMap.get(h.hotelId) || {};
 
       return {
-        name: meta.name || meta.hotelName || h.hotelId || 'Hotel',
+        name: meta.name || meta.hotelName || h.hotelId,
         stars: meta.starRating || meta.stars || 0,
-        reviewScore: meta.guestScore ? parseFloat(meta.guestScore) : (meta.reviewScore || 0),
+        reviewScore: meta.rating ? parseFloat(meta.rating) : (meta.guestScore ? parseFloat(meta.guestScore) : 0),
         reviewCount: meta.reviewCount || meta.numberOfReviews || 0,
         pricePerNight,
         totalPrice,
-        location: cityInfo.cityName,
-        distanceFromCenter: meta.distanceFromCityCenter
-          ? `${parseFloat(meta.distanceFromCityCenter).toFixed(1)} km from centre`
-          : '',
-        thumbnailUrl: meta.mainPhoto || meta.thumbnail || meta.hotelImages?.[0]?.url || '',
+        location: meta.address || cityInfo.cityName,
+        distanceFromCenter: '',
+        thumbnailUrl: meta.main_photo || meta.mainPhoto || meta.thumbnail || '',
         affiliateUrl: buildBookingUrl(checkinFormatted, checkoutFormatted, cityInfo.cityName, affiliateId),
       };
     })
