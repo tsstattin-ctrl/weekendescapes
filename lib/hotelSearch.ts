@@ -75,6 +75,7 @@ async function fetchHotelsForDates(
     countryCode: cityInfo.countryCode,
     cityName: cityInfo.cityName,
     limit: 10,
+    includeHotelData: true,
     timeout: 8,
   };
 
@@ -119,17 +120,17 @@ async function fetchHotelsForDates(
       const pricePerNight = nights > 0 ? Math.round(totalAmount / nights) : totalPrice;
 
       return {
-        name: h.name || h.hotelName || h.hotel_name || h.title || h.property_name || h.HotelName || 'Unknown Hotel',
-        stars: h.starRating || 0,
-        reviewScore: h.guestScore ? parseFloat(h.guestScore) : 0,
-        reviewCount: h.reviewCount || 0,
+        name: h.hotelData?.name || h.name || h.hotelName || h.hotel_name || h.title || 'Unknown Hotel',
+        stars: h.hotelData?.starRating || h.starRating || 0,
+        reviewScore: h.hotelData?.guestScore ? parseFloat(h.hotelData.guestScore) : (h.guestScore ? parseFloat(h.guestScore) : 0),
+        reviewCount: h.hotelData?.reviewCount || h.reviewCount || 0,
         pricePerNight,
         totalPrice,
         location: cityInfo.cityName,
-        distanceFromCenter: h.distanceFromCityCenter
+        distanceFromCenter: h.hotelData?.distanceFromCityCenter || h.distanceFromCityCenter
           ? `${parseFloat(h.distanceFromCityCenter).toFixed(1)} km from centre`
           : '',
-        thumbnailUrl: h.mainPhoto || h.thumbnail || '',
+        thumbnailUrl: h.hotelData?.mainPhoto || h.hotelData?.thumbnail || h.mainPhoto || h.thumbnail || '',
         affiliateUrl: buildBookingUrl(checkinFormatted, checkoutFormatted, cityInfo.cityName, affiliateId),
       };
     })
