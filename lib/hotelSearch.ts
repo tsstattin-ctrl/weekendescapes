@@ -109,7 +109,8 @@ async function fetchHotelsForDates(
     (new Date(checkoutFormatted).getTime() - new Date(checkinFormatted).getTime()) / (1000 * 60 * 60 * 24)
   );
 
-  return hotels
+  console.error('LiteAPI first hotel sample:', JSON.stringify(hotels[0], null, 2));
+    return hotels
     .slice(0, 6)
     .map((h: any) => {
       const cheapestRate = h.roomTypes?.[0]?.rates?.[0];
@@ -118,7 +119,7 @@ async function fetchHotelsForDates(
       const pricePerNight = nights > 0 ? Math.round(totalAmount / nights) : totalPrice;
 
       return {
-        name: h.name || 'Unknown Hotel',
+        name: h.name || h.hotelName || h.hotel_name || h.title || h.property_name || h.HotelName || 'Unknown Hotel',
         stars: h.starRating || 0,
         reviewScore: h.guestScore ? parseFloat(h.guestScore) : 0,
         reviewCount: h.reviewCount || 0,
