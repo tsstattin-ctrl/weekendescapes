@@ -41,7 +41,7 @@ function buildBookingUrl(checkin: string, checkout: string, cityName: string, af
     label: 'weekendescapes',
     ss: cityName,
   });
-  return `https://www.booking.com/search.html?${params}`;
+  return `https://www.booking.com/searchresults.html?${params}`;
 }
 
 async function fetchHotelsForDates(
