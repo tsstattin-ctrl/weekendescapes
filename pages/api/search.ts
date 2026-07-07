@@ -20,12 +20,10 @@ export default async function handler(
   }
 
   try {
-    // Step 1: Parse natural language intent into structured params
     console.log('[search] Parsing intent for:', query);
     const intent = await parseIntent(query);
     console.log('[search] Parsed intent:', intent);
 
-    // Step 2: Fetch flights across all weekends in the range (parallel)
     console.log('[search] Fetching flights...');
     const flights = await searchFlights(intent);
     console.log(`[search] Found ${flights.length} flight options`);
@@ -38,27 +36,25 @@ export default async function handler(
       });
     }
 
-    // Step 3: For each flight weekend, fetch hotels in parallel
+    // Fetch hotels for top 3 cheapest weekends sequentially to respect rate limits
     console.log('[search] Fetching hotels for each weekend...');
     const hotelsByWeekend = new Map<string, HotelOption[]>();
 
-    await Promise.all(
-      flights.slice(0, 6).map(async (flight) => {
-        // Derive checkin/checkout from flight dates
-        // Friday outbound → checkin Friday, checkout Sunday
-        const checkin = flight.outbound.departure.split('T')[0];
-        const checkout = flight.inbound.departure.split('T')[0];
+    const topFlights = flights.slice(0, 3);
+    for (const flight of topFlights) {
+      const checkin = flight.outbound.departure.split('T')[0];
+      const checkout = flight.inbound.departure.split('T')[0];
+      console.log(`[search] Fetching hotels for ${flight.weekendLabel} (${checkin} - ${checkout})`);
+      const hotels = await searchHotels(intent, checkin, checkout);
+      console.log(`[search] Got ${hotels.length} hotels for ${flight.weekendLabel}`);
+      hotelsByWeekend.set(flight.weekendLabel, hotels);
+      // Wait between requests to respect LiteAPI sandbox rate limits
+      await new Promise(resolve => setTimeout(resolve, 1500));
+    }
 
-        const hotels = await searchHotels(intent, checkin, checkout);
-        hotelsByWeekend.set(flight.weekendLabel, hotels);
-      })
-    );
-
-    // Step 4: Combine flights + hotels into ranked packages
     const packages = buildPackages(flights, hotelsByWeekend);
     console.log(`[search] Built ${packages.length} packages`);
 
-    // Step 5: Ask Claude to rank and explain the top options
     const result = await rankPackages(packages, intent, query);
 
     return res.status(200).json(result);
