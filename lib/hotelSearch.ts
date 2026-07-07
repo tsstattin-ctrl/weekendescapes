@@ -24,7 +24,6 @@ const CITY_MAP: Record<string, { countryCode: string; cityName: string }> = {
   BUD: { countryCode: 'HU', cityName: 'Budapest' },
 };
 
-// Ensure date is in YYYY-MM-DD format
 function formatDate(dateStr: string): string {
   const d = new Date(dateStr);
   const year = d.getFullYear();
@@ -33,7 +32,6 @@ function formatDate(dateStr: string): string {
   return `${year}-${month}-${day}`;
 }
 
-// Sleep helper to avoid rate limits
 function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
@@ -49,6 +47,39 @@ function buildBookingUrl(checkin: string, checkout: string, cityName: string, af
   return `https://www.booking.com/search.html?${params}`;
 }
 
+// Fetch hotel name and metadata from /data/hotels endpoint using hotelIds
+async function fetchHotelNames(hotelIds: string[], apiKey: string): Promise<Map<string, any>> {
+  const nameMap = new Map<string, any>();
+  if (hotelIds.length === 0) return nameMap;
+
+  try {
+    const params = new URLSearchParams();
+    hotelIds.forEach(id => params.append('hotelIds', id));
+
+    const response = await fetch(`${LITEAPI_BASE}/data/hotels?${params}`, {
+      headers: {
+        'accept': 'application/json',
+        'X-API-Key': apiKey,
+      },
+    });
+
+    if (!response.ok) {
+      console.error('LiteAPI hotel names error:', response.status);
+      return nameMap;
+    }
+
+    const data = await response.json();
+    const hotels = data.data || [];
+    for (const h of hotels) {
+      nameMap.set(h.id || h.hotelId, h);
+    }
+  } catch (err) {
+    console.error('Hotel name lookup failed:', err);
+  }
+
+  return nameMap;
+}
+
 async function fetchHotelsForDates(
   intent: ParsedIntent,
   checkin: string,
@@ -62,7 +93,6 @@ async function fetchHotelsForDates(
   const hotelPrefs = intent.hotelPreferences;
   const minStars = hotelPrefs?.stars || null;
 
-  // Format dates explicitly
   const checkinFormatted = formatDate(checkin);
   const checkoutFormatted = formatDate(checkout);
 
@@ -74,15 +104,11 @@ async function fetchHotelsForDates(
     occupancies: [{ adults: 2 }],
     countryCode: cityInfo.countryCode,
     cityName: cityInfo.cityName,
-    limit: 10,
-    includeHotelData: true,
+    limit: 6,
     timeout: 8,
   };
 
-  if (minStars) {
-    ratesBody.starRating = [minStars];
-  }
-
+  if (minStars) ratesBody.starRating = [minStars];
   if (hotelPrefs?.neighbourhood) {
     ratesBody.aiSearch = `hotels in ${hotelPrefs.neighbourhood} ${cityInfo.cityName}`;
   }
@@ -98,20 +124,23 @@ async function fetchHotelsForDates(
   });
 
   if (!ratesResponse.ok) {
-    const errText = await ratesResponse.text();
-    console.error('LiteAPI rates error:', ratesResponse.status, errText);
+    console.error('LiteAPI rates error:', ratesResponse.status, await ratesResponse.text());
     return [];
   }
 
   const ratesData = await ratesResponse.json();
   const hotels = ratesData.data || [];
+  if (hotels.length === 0) return [];
 
   const nights = Math.round(
     (new Date(checkoutFormatted).getTime() - new Date(checkinFormatted).getTime()) / (1000 * 60 * 60 * 24)
   );
 
-  console.error('LiteAPI first hotel sample:', JSON.stringify(hotels[0], null, 2));
-    return hotels
+  // Fetch hotel names in a single batch call
+  const hotelIds = hotels.map((h: any) => h.hotelId).filter(Boolean);
+  const hotelMetadata = await fetchHotelNames(hotelIds, apiKey);
+
+  return hotels
     .slice(0, 6)
     .map((h: any) => {
       const cheapestRate = h.roomTypes?.[0]?.rates?.[0];
@@ -119,18 +148,21 @@ async function fetchHotelsForDates(
       const totalPrice = Math.round(totalAmount);
       const pricePerNight = nights > 0 ? Math.round(totalAmount / nights) : totalPrice;
 
+      // Get hotel metadata from the names lookup
+      const meta = hotelMetadata.get(h.hotelId) || {};
+
       return {
-        name: h.hotelData?.name || h.name || h.hotelName || h.hotel_name || h.title || 'Unknown Hotel',
-        stars: h.hotelData?.starRating || h.starRating || 0,
-        reviewScore: h.hotelData?.guestScore ? parseFloat(h.hotelData.guestScore) : (h.guestScore ? parseFloat(h.guestScore) : 0),
-        reviewCount: h.hotelData?.reviewCount || h.reviewCount || 0,
+        name: meta.name || meta.hotelName || h.hotelId || 'Hotel',
+        stars: meta.starRating || meta.stars || 0,
+        reviewScore: meta.guestScore ? parseFloat(meta.guestScore) : (meta.reviewScore || 0),
+        reviewCount: meta.reviewCount || meta.numberOfReviews || 0,
         pricePerNight,
         totalPrice,
         location: cityInfo.cityName,
-        distanceFromCenter: h.hotelData?.distanceFromCityCenter || h.distanceFromCityCenter
-          ? `${parseFloat(h.distanceFromCityCenter).toFixed(1)} km from centre`
+        distanceFromCenter: meta.distanceFromCityCenter
+          ? `${parseFloat(meta.distanceFromCityCenter).toFixed(1)} km from centre`
           : '',
-        thumbnailUrl: h.hotelData?.mainPhoto || h.hotelData?.thumbnail || h.mainPhoto || h.thumbnail || '',
+        thumbnailUrl: meta.mainPhoto || meta.thumbnail || meta.hotelImages?.[0]?.url || '',
         affiliateUrl: buildBookingUrl(checkinFormatted, checkoutFormatted, cityInfo.cityName, affiliateId),
       };
     })
@@ -153,16 +185,14 @@ export async function searchHotels(
   const cached = getCached<HotelOption[]>(cacheKey);
   if (cached) return cached;
 
-  // Add delay to avoid rate limiting when called in parallel
-  await sleep(Math.random() * 800);
+  await sleep(Math.random() * 500);
 
   const results = await fetchHotelsForDates(intent, checkin, checkout);
 
-  // Apply budget filter
   const budgetMax: Record<string, number> = {
-    budget: 120,
-    mid: 250,
-    comfort: 400,
+    budget: 150,
+    mid: 300,
+    comfort: 500,
     luxury: 99999,
     unspecified: 99999,
   };
@@ -170,8 +200,6 @@ export async function searchHotels(
   const filtered = results.filter(h => h.pricePerNight <= maxPerNight);
   const final = filtered.length > 0 ? filtered : results;
 
-  if (final.length > 0) {
-    setCache(cacheKey, final);
-  }
+  if (final.length > 0) setCache(cacheKey, final);
   return final;
 }
