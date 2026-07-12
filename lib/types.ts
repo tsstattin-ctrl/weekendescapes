@@ -1,26 +1,28 @@
 export interface HotelPreferences {
-  neighbourhood: string | null;       // e.g. "Jordaan", "city centre"
-  stars: number | null;               // minimum star rating e.g. 4
-  specificHotel: string | null;       // exact hotel name if user specified one
-  amenities: string[];                // e.g. ["pool", "breakfast included"]
-  pricePerNightMax: number | null;    // maximum price per night in EUR
-  freeText: string;                   // any other preferences not captured above
+  neighbourhood: string | null;
+  stars: number | null;
+  specificHotel: string | null;
+  amenities: string[];
+  pricePerNightMax: number | null;
+  freeText: string;
+  pointOfInterest: string | null;      // e.g. "Rijksmuseum", "Restaurant X"
+  maxWalkingMinutes: number | null;    // e.g. 10
 }
 
 export interface FlightPreferences {
-  preferredAirlines: string[];        // e.g. ["SAS", "Norwegian"]
-  maxStops: number | null;            // 0 = direct only
+  preferredAirlines: string[];
+  maxStops: number | null;
   preferredDepartureTime: 'morning' | 'afternoon' | 'evening' | null;
   maxDurationHours: number | null;
 }
 
 export interface ParsedIntent {
-  origin: string;                     // e.g. "OSL"
-  originCity: string;                 // e.g. "Oslo"
-  destination: string;                // e.g. "AMS"
-  destinationCity: string;            // e.g. "Amsterdam"
-  dateRangeStart: string;             // ISO date e.g. "2025-03-01"
-  dateRangeEnd: string;               // ISO date e.g. "2025-04-30"
+  origin: string;
+  originCity: string;
+  destination: string;
+  destinationCity: string;
+  dateRangeStart: string;
+  dateRangeEnd: string;
   budgetSignal: 'budget' | 'mid' | 'comfort' | 'luxury' | 'unspecified';
   hotelPreferences: HotelPreferences;
   flightPreferences: FlightPreferences;
@@ -32,7 +34,7 @@ export interface ParsedIntent {
 
 export interface FlightOption {
   outbound: {
-    departure: string;    // ISO datetime
+    departure: string;
     arrival: string;
     airline: string;
     flightNumber: string;
@@ -45,28 +47,30 @@ export interface FlightOption {
     flightNumber: string;
     duration: string;
   };
-  totalPrice: number;     // EUR
+  totalPrice: number;
   currency: string;
-  weekendLabel: string;   // e.g. "Mar 14–16"
+  weekendLabel: string;
   bookingUrl: string;
 }
 
 export interface HotelOption {
   name: string;
   stars: number;
-  reviewScore: number;    // 0–10
+  reviewScore: number;
   reviewCount: number;
-  pricePerNight: number;  // EUR
-  totalPrice: number;     // for the stay duration
+  pricePerNight: number;
+  totalPrice: number;
   location: string;
   distanceFromCenter: string;
   thumbnailUrl: string;
   affiliateUrl: string;
+  coordinates?: { lat: number; lng: number };     // for walking distance filtering
+  walkingMinutesToPoi?: number;                    // populated when POI search active
 }
 
 export interface WeekendPackage {
   id: string;
-  weekendLabel: string;   // e.g. "Mar 14–16"
+  weekendLabel: string;
   flight: FlightOption;
   hotel: HotelOption;
   totalCost: number;
@@ -75,6 +79,6 @@ export interface WeekendPackage {
 
 export interface RankedResult {
   packages: WeekendPackage[];
-  recommendation: string;   // Claude's plain-English top pick explanation
-  tradeoffs: string;        // Brief summary of alternatives
+  recommendation: string;
+  tradeoffs: string;
 }

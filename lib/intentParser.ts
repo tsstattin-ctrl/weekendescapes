@@ -20,7 +20,9 @@ Always respond with valid JSON only. No explanation, no markdown. Use this exact
     "specificHotel": "exact hotel name if mentioned, else null",
     "amenities": ["array of specific amenities mentioned"],
     "pricePerNightMax": "maximum price per night as integer if mentioned, else null",
-    "freeText": "any other hotel preferences not captured above"
+    "freeText": "any other hotel preferences not captured above",
+    "pointOfInterest": "specific restaurant, museum, landmark or venue mentioned for proximity search, else null",
+    "maxWalkingMinutes": "maximum walking time in minutes to POI as integer, else null"
   },
   "flightPreferences": {
     "preferredAirlines": ["array of airline names if mentioned, else empty array"],
@@ -39,9 +41,11 @@ Rules:
 - origin: if not mentioned, default to OSL (Oslo)
 - budgetSignal: "budget"=cheap/cheapest, "comfort"=nice/good, "luxury"=luxury/five-star, "mid"=default
 - searchMode: "hotel_led" if user specifies a hotel name or very specific hotel constraints; "flight_led" if user cares mainly about flight timing/price; "package" for balanced search (default)
-- sources: always include "booking"; add "agoda" and "hotels_com" if user asks to search across aggregators or mentions multiple sources
-- neighbourhood: extract district/area names precisely (e.g. "Jordaan", "city centre", "near the airport")
+- sources: always include "booking"; add "agoda" and "hotels_com" if user asks to search across aggregators
+- neighbourhood: extract district/area names precisely (e.g. "Jordaan", "14th arrondissement", "Shoreditch")
 - stars: extract as integer (e.g. "four-star" = 4, "5 star" = 5)
+- pointOfInterest: extract specific venues, restaurants, museums, landmarks (e.g. "Rijksmuseum", "Restaurant X", "Eiffel Tower")
+- maxWalkingMinutes: extract walking time constraints (e.g. "10 minute walk" = 10, "walking distance" = 15)
 - If user mentions a specific hotel, set searchMode to "hotel_led" and specificHotel to that name
 - Always use IATA codes for origin and destination`;
 
