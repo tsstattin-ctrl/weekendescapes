@@ -122,6 +122,6 @@ export function buildRadiusFilter(center: Coordinates, radiusMeters: number = 10
   return {
     latitude: center.lat,
     longitude: center.lng,
-    radius: Math.max(1, Math.round(radiusMeters / 1000)), // LiteAPI requires integer km
+    radius: Math.max(1000, Math.round(radiusMeters)), // LiteAPI requires integer meters, minimum 1000
   };
 }
