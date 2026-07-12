@@ -169,7 +169,7 @@ async function fetchHotelsForDates(
           ? `${parseFloat(meta.distanceFromCityCenter).toFixed(1)} km from centre`
           : '',
         thumbnailUrl: meta.main_photo || meta.mainPhoto || '',
-        affiliateUrl: buildBookingUrl(checkinFormatted, checkoutFormatted, meta.name || cityInfo.cityName, affiliateId),
+        affiliateUrl: buildBookingUrl(checkinFormatted, checkoutFormatted, cityInfo.cityName, affiliateId),
         coordinates: hotelCoords || undefined,
       };
     })
