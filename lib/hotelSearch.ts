@@ -1,6 +1,7 @@
 import { HotelOption, ParsedIntent } from './types';
 import { buildCacheKey, getCached, setCache } from './cache';
 import { geocodeLocation, getWalkingDistance, buildRadiusFilter } from './geocoding';
+import { buildBookingAffiliateUrl } from './bookingUrl';
 
 const LITEAPI_BASE = 'https://api.liteapi.travel/v3.0';
 
@@ -34,16 +35,6 @@ function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-function buildBookingUrl(checkin: string, checkout: string, searchTerm: string, affiliateId: string): string {
-  const params = new URLSearchParams({
-    aid: affiliateId,
-    checkin,
-    checkout,
-    label: 'weekendescapes',
-    ss: searchTerm,
-  });
-  return `https://www.booking.com/searchresults.html?${params}`;
-}
 
 async function fetchHotelsForDates(
   intent: ParsedIntent,
@@ -169,7 +160,7 @@ async function fetchHotelsForDates(
           ? `${parseFloat(meta.distanceFromCityCenter).toFixed(1)} km from centre`
           : '',
         thumbnailUrl: meta.main_photo || meta.mainPhoto || '',
-        affiliateUrl: buildBookingUrl(checkinFormatted, checkoutFormatted, cityInfo.cityName, affiliateId),
+        affiliateUrl: buildBookingAffiliateUrl(intent.destination, checkinFormatted, checkoutFormatted, affiliateId),
         coordinates: hotelCoords || undefined,
       };
     })
