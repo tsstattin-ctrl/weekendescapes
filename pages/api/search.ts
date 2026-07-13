@@ -1,22 +1,8 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { parseIntent } from '../../lib/intentParser';
-import { searchFlights } from '../../lib/flightSearch';
-import { searchHotels } from '../../lib/hotelSearch';
-import { buildPackages } from '../../lib/packageBuilder';
-import { rankPackages } from '../../lib/ranker';
-import { HotelOption, RankedResult } from '../../lib/types';
-
-// Extract just the date part from datetime strings like "2026-07-24 18:50" or "2026-07-24T18:50"
-function extractDate(datetime: string): string {
-  return datetime.split('T')[0].split(' ')[0];
-}
-
-// Add N days to a YYYY-MM-DD date string
-function addDays(dateStr: string, days: number): string {
-  const d = new Date(dateStr);
-  d.setDate(d.getDate() + days);
-  return d.toISOString().split('T')[0];
-}
+import { planSearch } from '../../lib/planner';
+import { executeSearchPlan } from '../../lib/orchestrator';
+import { synthesiseResults } from '../../lib/synthesiser';
+import { RankedResult } from '../../lib/types';
 
 export default async function handler(
   req: NextApiRequest,
@@ -32,45 +18,31 @@ export default async function handler(
   }
 
   try {
-    console.log('[search] Parsing intent for:', query);
-    const intent = await parseIntent(query);
-    console.log('[search] Parsed intent:', intent);
+    console.log('[search] Planning strategy for:', query);
+    const plan = await planSearch(query);
+    console.log('[search] Plan:', JSON.stringify({
+      strategy: plan.strategy,
+      destinations: plan.destinations.map(d => d.iata),
+      weekendsToCheck: plan.weekendsToCheck,
+      weighting: plan.weighting,
+      constraints: plan.constraints,
+      rationale: plan.planRationale,
+    }));
 
-    console.log('[search] Fetching flights...');
-    const flights = await searchFlights(intent);
-    console.log(`[search] Found ${flights.length} flight options`);
+    console.log('[search] Executing plan...');
+    const packages = await executeSearchPlan(plan);
+    console.log(`[search] Found ${packages.length} packages`);
 
-    if (flights.length === 0) {
+    if (packages.length === 0) {
       return res.status(200).json({
         packages: [],
-        recommendation: 'No flights found for this route and date range. Try adjusting your dates or origin city.',
+        recommendation: 'No packages found. Try broadening your dates, destination, or hotel preferences.',
         tradeoffs: '',
       });
     }
 
-    // Fetch hotels for top 3 cheapest weekends sequentially to respect rate limits
-    console.log('[search] Fetching hotels for each weekend...');
-    const hotelsByWeekend = new Map<string, HotelOption[]>();
-
-    const topFlights = flights.slice(0, 3);
-    for (const flight of topFlights) {
-      // Extract just the date part from the departure datetime
-      const checkin = extractDate(flight.outbound.departure);
-      // Checkout is always checkin + 2 days (Friday → Sunday)
-      const checkout = addDays(checkin, 2);
-
-      console.log(`[search] Fetching hotels for ${flight.weekendLabel} (${checkin} - ${checkout})`);
-      const hotels = await searchHotels(intent, checkin, checkout);
-      console.log(`[search] Got ${hotels.length} hotels for ${flight.weekendLabel}`);
-      hotelsByWeekend.set(flight.weekendLabel, hotels);
-      // Wait between requests to respect LiteAPI sandbox rate limits
-      await new Promise(resolve => setTimeout(resolve, 1500));
-    }
-
-    const packages = buildPackages(flights, hotelsByWeekend);
-    console.log(`[search] Built ${packages.length} packages`);
-
-    const result = await rankPackages(packages, intent, query);
+    console.log('[search] Synthesising results...');
+    const result = await synthesiseResults(packages, plan);
 
     return res.status(200).json(result);
   } catch (err) {
