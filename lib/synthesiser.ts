@@ -1,6 +1,12 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { WeekendPackage, RankedResult } from './types';
 import { SearchPlan } from './planner';
+import {
+  rankByValue,
+  DEFAULT_VALUE_CONFIG,
+  QUALITY_VALUE_CONFIG,
+  ScoredPackage,
+} from './value';
 
 const client = new Anthropic();
 
@@ -11,43 +17,70 @@ export async function synthesiseResults(
   if (packages.length === 0) {
     return {
       packages: [],
-      recommendation: 'No packages found for your search. Try broadening your date range or being less specific on hotel preferences.',
+      recommendation:
+        'No packages found for your search. Try broadening your date range or being less specific on hotel preferences.',
       tradeoffs: '',
     };
   }
 
-  const packageSummary = packages.map((p, i) => ({
-    index: i + 1,
-    destination: p.hotel.location,
-    weekend: p.weekendLabel,
-    flightCost: `€${p.flight.totalPrice}`,
-    airline: p.flight.outbound.airline,
-    flightDuration: p.flight.outbound.duration,
-    hotel: p.hotel.name,
-    hotelStars: p.hotel.stars,
-    hotelScore: p.hotel.reviewScore,
-    hotelLocation: p.hotel.distanceFromCenter,
-    hotelCostTotal: `€${p.hotel.totalPrice}`,
-    totalCost: `€${p.totalCost}`,
-    walkingMinutesToPoi: p.hotel.walkingMinutesToPoi || null,
+  // 1. RANKING HAPPENS HERE, IN CODE — not in the LLM. Deterministic and tunable.
+  const config =
+    plan.weighting === 'quality_adjusted' ? QUALITY_VALUE_CONFIG : DEFAULT_VALUE_CONFIG;
+  const ranked: ScoredPackage[] = rankByValue(packages, config);
+  const top = ranked.slice(0, 3);
+
+  // 2. Summary is built in final ranked order and exposes the value maths, so the
+  //    prose can reference the travel-time tradeoff accurately instead of guessing.
+  const packageSummary = top.map((s, i) => ({
+    rank: i + 1,
+    destination: s.pkg.hotel.location,
+    weekend: s.pkg.weekendLabel,
+    airline: s.pkg.flight.outbound.airline,
+    flightDuration: s.pkg.flight.outbound.duration,
+    roundTripHours: Number(s.rtHours.toFixed(1)),
+    hotel: s.pkg.hotel.name,
+    hotelStars: s.pkg.hotel.stars,
+    hotelScore: s.pkg.hotel.reviewScore,
+    flightCost: `€${s.pkg.flight.totalPrice}`,
+    hotelCostTotal: `€${s.pkg.hotel.totalPrice}`,
+    totalCost: `€${s.pkg.totalCost}`, // sticker price
+    travelTimePenalty: `€${s.travelPenalty}`,
+    effectiveValueCost: `€${s.effectiveCost}`, // the ranking key
   }));
+
+  // Did the cheapest-on-paper option get out-ranked by travel time? If so, tell the
+  // model to explain the divergence rather than contradict the ranking.
+  const cheapestOnPaper = [...packages].sort((a, b) => a.totalCost - b.totalCost)[0];
+  const winnerBeatCheapest = cheapestOnPaper && top[0].pkg !== cheapestOnPaper;
 
   const isMultiDestination = plan.strategy === 'multi_destination';
   const isHotelLed = plan.strategy === 'hotel_led';
 
-  const systemPrompt = `You are an expert Nordic travel agent giving personalised advice. 
-You will receive ranked travel packages and the user's original request.
+  const systemPrompt = `You are an expert Nordic travel agent giving personalised advice.
+The packages you receive are ALREADY ranked best-to-worst by value. Do NOT re-rank them.
+"Value" = total price adjusted for travel time: long or connecting flights are penalised because they eat into a short weekend. "effectiveValueCost" is the ranking key; "totalCost" is the sticker price.
+
 Respond with JSON only. No markdown. Schema:
 {
-  "rankedOrder": [array of package indices best to worst],
-  "recommendation": "2-3 sentence plain English explanation of the top pick, written like a travel agent — mention specific hotel name, flight details, total cost, and why it suits the user's request",
-  "tradeoffs": "1-2 sentences about what the runner-up offers differently — be specific about the tradeoff (e.g. €30 more but better hotel score, or same price but different destination)"
+  "recommendation": "2-3 sentences on the rank-1 pick, like a travel agent — name the hotel, the flight (airline + duration), the total cost, and why it suits the request",
+  "tradeoffs": "1-2 sentences on what rank 2 offers differently — be specific about the tradeoff (e.g. €30 cheaper on paper but 5h more round-trip travel)"
 }
 
-${isMultiDestination ? 'This is a multi-destination search — lead with the destination comparison angle, e.g. "Prague beats Amsterdam on value this weekend because..."' : ''}
-${isHotelLed ? 'This is a hotel-led search — the hotel is fixed, so focus on explaining which weekend timing offers the best total deal including flights.' : ''}
-${plan.weighting === 'total_cost' ? 'Prioritise total cost in your ranking.' : ''}
-${plan.weighting === 'quality_adjusted' ? 'Prioritise hotel quality and review scores, accepting slightly higher cost for meaningfully better hotels.' : ''}`;
+${
+  winnerBeatCheapest
+    ? 'IMPORTANT: the rank-1 pick is NOT the cheapest on paper — a cheaper option was out-ranked because its flight is much longer. Explicitly explain this: name the cheaper option, its sticker price, and why the extra travel time makes the top pick the better weekend.'
+    : ''
+}
+${
+  isMultiDestination
+    ? 'Lead with the destination comparison angle (e.g. "Berlin beats Vienna on value this weekend because...").'
+    : ''
+}
+${
+  isHotelLed
+    ? 'The hotel is fixed, so focus on which weekend timing gives the best total deal including flights.'
+    : ''
+}`;
 
   const response = await client.messages.create({
     model: 'claude-sonnet-4-6',
@@ -58,35 +91,33 @@ ${plan.weighting === 'quality_adjusted' ? 'Prioritise hotel quality and review s
         role: 'user',
         content: `User's request: "${plan.rawQuery}"
 
-Search strategy: ${plan.strategy}
-Optimising for: ${plan.weighting}
+Strategy: ${plan.strategy}
 Constraints: ${JSON.stringify(plan.constraints)}
 
-Packages to rank:
+Packages (already ranked best-to-worst by value):
 ${JSON.stringify(packageSummary, null, 2)}`,
       },
     ],
   });
 
-  const text = response.content[0].type === 'text' ? response.content[0].text : '{}';
+  // Robustly pick the text block rather than assuming content[0].
+  const textBlock = response.content.find((b) => b.type === 'text');
+  const text = textBlock && textBlock.type === 'text' ? textBlock.text : '{}';
   const clean = text.replace(/```json|```/g, '').trim();
+
+  const rankedPackages = top.map((s) => s.pkg);
 
   try {
     const parsed = JSON.parse(clean);
-    const rankedPackages = (parsed.rankedOrder as number[])
-      .map((i: number) => packages[i - 1])
-      .filter(Boolean)
-      .slice(0, 3);
-
     return {
-      packages: rankedPackages,
+      packages: rankedPackages, // order comes from code, not the model
       recommendation: parsed.recommendation || '',
       tradeoffs: parsed.tradeoffs || '',
     };
   } catch {
     return {
-      packages: packages.slice(0, 3),
-      recommendation: `Best option: ${packages[0]?.weekendLabel} at €${packages[0]?.totalCost} total.`,
+      packages: rankedPackages,
+      recommendation: `Best value: ${rankedPackages[0]?.weekendLabel} at €${rankedPackages[0]?.totalCost} total.`,
       tradeoffs: '',
     };
   }

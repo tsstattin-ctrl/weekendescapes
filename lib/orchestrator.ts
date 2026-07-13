@@ -2,7 +2,48 @@ import { SearchPlan, DestinationPlan } from './planner';
 import { searchFlights } from './flightSearch';
 import { searchHotels } from './hotelSearch';
 import { buildPackages } from './packageBuilder';
+import { resolveHotel, HotelMatch } from './hotelResolver';
 import { WeekendPackage, FlightOption, HotelOption, ParsedIntent } from './types';
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Stable identity for a hotel: prefer a real ID, fall back to normalised name.
+// TODO: if HotelOption exposes a LiteAPI hotelId, use it directly and drop the cast.
+function hotelKey(h: HotelOption): string {
+  const id = (h as any).id ?? (h as any).hotelId;
+  return id ? String(id) : h.name.toLowerCase().trim();
+}
+
+function dedupeByKey(hotels: HotelOption[]): HotelOption[] {
+  const seen = new Map<string, HotelOption>();
+  for (const h of hotels) {
+    const k = hotelKey(h);
+    if (!seen.has(k)) seen.set(k, h);
+  }
+  return [...seen.values()];
+}
+
+interface PackageMeta {
+  isRequestedHotel: boolean;
+  resolutionStatus: HotelMatch['status'];
+  resolutionQuery: string | null;
+}
+
+function makePackage(
+  weekend: { label: string },
+  flight: FlightOption,
+  hotel: HotelOption,
+  meta: PackageMeta,
+): WeekendPackage {
+  return {
+    id: `${weekend.label}-${hotel.name}`.replace(/\s/g, '-').toLowerCase(),
+    weekendLabel: weekend.label,
+    flight,
+    hotel,
+    totalCost: flight.totalPrice + hotel.totalPrice,
+    ...meta,
+  };
+}
 
 // Convert a SearchPlan into a ParsedIntent-compatible object for existing search functions
 function planToIntent(plan: SearchPlan, destination: DestinationPlan): ParsedIntent {
@@ -77,7 +118,7 @@ function getWeekends(startDate: string, endDate: string, maxCount: number): Arra
   return weekends;
 }
 
-// STRATEGY: Package search (default)
+// STRATEGY: Package search (default) — unchanged
 async function executePackageStrategy(
   plan: SearchPlan,
   destination: DestinationPlan
@@ -97,64 +138,94 @@ async function executePackageStrategy(
     console.log(`[orchestrator] Hotels for ${flight.weekendLabel} (${checkin} - ${checkout})`);
     const hotels = await searchHotels(intent, checkin, checkout);
     hotelsByWeekend.set(flight.weekendLabel, hotels);
-    await new Promise(resolve => setTimeout(resolve, 1200));
+    await sleep(1200);
   }
 
   return buildPackages(flights, hotelsByWeekend);
 }
 
 // STRATEGY: Hotel-led search (fix hotel, find cheapest weekend)
+// Resolve the hotel ONCE, then hold that identity constant across every weekend.
 async function executeHotelLedStrategy(
   plan: SearchPlan,
   destination: DestinationPlan
 ): Promise<WeekendPackage[]> {
   const intent = planToIntent(plan, destination);
-  const specificHotel = plan.constraints.specificHotel;
+  const query = plan.constraints.specificHotel || null;
 
-  console.log(`[orchestrator] Hotel-led search for: ${specificHotel}`);
+  console.log(`[orchestrator] Hotel-led search for: ${query}`);
 
-  // Get all weekends in range
   const weekends = getWeekends(plan.dateRangeStart, plan.dateRangeEnd, plan.weekendsToCheck);
 
-  // Fetch flights and hotel rates for each weekend
-  const packages: WeekendPackage[] = [];
-
-  // Get flights for all weekends first
+  // Flights for all weekends, keyed by label (same join as before).
   const allFlights = await searchFlights(intent);
   const flightByWeekend = new Map<string, FlightOption>();
-  for (const f of allFlights) {
-    flightByWeekend.set(f.weekendLabel, f);
+  for (const f of allFlights) flightByWeekend.set(f.weekendLabel, f);
+
+  // Phase 1 — gather hotel inventory per weekend once, and cache it (no extra calls).
+  const inventory = new Map<string, HotelOption[]>();
+  for (const weekend of weekends) {
+    console.log(`[orchestrator] Hotel-led: inventory for ${weekend.label}`);
+    inventory.set(weekend.label, await searchHotels(intent, weekend.friday, weekend.sunday));
+    await sleep(1200);
   }
 
-  // For each weekend, get hotel rates and pair with flight
+  // Phase 2 — resolve the requested hotel ONCE, against the union of all inventory.
+  // (Resolving against every weekend avoids a mis-resolve when the hotel is sold
+  // out on the first weekend we happen to look at.)
+  const allCandidates = dedupeByKey([...inventory.values()].flat());
+  const match: HotelMatch = query
+    ? resolveHotel(query, allCandidates, destination.cityName)
+    : { status: 'exact', hotel: allCandidates[0] ?? null, score: 1, alternatives: [] };
+
+  console.log(
+    `[orchestrator] Resolution: "${query}" → ${match.status} ` +
+    `(${match.hotel?.name ?? 'none'}, score ${match.score.toFixed(2)})`,
+  );
+
+  const packages: WeekendPackage[] = [];
+
+  // Phase 3a — genuine miss: DON'T pretend. Return the best available stays,
+  // explicitly tagged as NOT the requested hotel so the UI can say
+  // "We couldn't find '<query>' — here are the best-value stays instead."
+  if (match.status === 'not_found' || !match.hotel) {
+    for (const weekend of weekends) {
+      const flight = flightByWeekend.get(weekend.label);
+      const hotels = (inventory.get(weekend.label) ?? []).slice().sort((a, b) => a.totalPrice - b.totalPrice);
+      const alt = hotels[0];
+      if (flight && alt) {
+        packages.push(makePackage(weekend, flight, alt, {
+          isRequestedHotel: false,
+          resolutionStatus: 'not_found',
+          resolutionQuery: query,
+        }));
+      }
+    }
+    return packages.sort((a, b) => a.totalCost - b.totalCost);
+  }
+
+  // Phase 3b — hold the hotel constant. For each weekend, find the SAME hotel by
+  // stable key. If it's unavailable that weekend, skip — never swap in a different one.
+  const targetKey = hotelKey(match.hotel);
   for (const weekend of weekends) {
-    console.log(`[orchestrator] Hotel-led: checking ${weekend.label}`);
-
-    // Search hotels with specificHotel in the intent
-    const hotels = await searchHotels(intent, weekend.friday, weekend.sunday);
-
-    // Find the specific hotel if possible, otherwise use cheapest
-    const targetHotel = specificHotel
-      ? hotels.find(h => h.name.toLowerCase().includes(specificHotel.toLowerCase())) || hotels[0]
-      : hotels[0];
-
     const flight = flightByWeekend.get(weekend.label);
+    if (!flight) continue;
 
-    if (targetHotel && flight) {
-      const totalCost = flight.totalPrice + targetHotel.totalPrice;
-      packages.push({
-        id: `${weekend.label}-${targetHotel.name}`.replace(/\s/g, '-').toLowerCase(),
-        weekendLabel: weekend.label,
-        flight,
-        hotel: targetHotel,
-        totalCost,
-      });
+    const hotels = inventory.get(weekend.label) ?? [];
+    const sameHotel = hotels.find((h) => hotelKey(h) === targetKey);
+    if (!sameHotel) {
+      console.log(`[orchestrator] ${match.hotel.name} unavailable for ${weekend.label} — skipping (no silent swap)`);
+      continue;
     }
 
-    await new Promise(resolve => setTimeout(resolve, 1200));
+    packages.push(makePackage(weekend, flight, sameHotel, {
+      isRequestedHotel: true,
+      resolutionStatus: match.status, // 'exact' | 'fuzzy'
+      resolutionQuery: query,
+    }));
   }
 
-  // Calculate savings vs average
+  // Savings vs average — now meaningful, because every package is the same hotel.
   if (packages.length > 1) {
     const avgCost = packages.reduce((sum, p) => sum + p.totalCost, 0) / packages.length;
     for (const pkg of packages) {
@@ -165,21 +236,17 @@ async function executeHotelLedStrategy(
   return packages.sort((a, b) => a.totalCost - b.totalCost);
 }
 
-// STRATEGY: Multi-destination (search multiple cities, find best overall)
+// STRATEGY: Multi-destination (search multiple cities, find best overall) — unchanged
 async function executeMultiDestinationStrategy(
   plan: SearchPlan
 ): Promise<WeekendPackage[]> {
   console.log(`[orchestrator] Multi-destination search across ${plan.destinations.length} cities`);
 
-  // Run package searches for all destinations in parallel
   const allResults = await Promise.all(
     plan.destinations.map(dest => executePackageStrategy(plan, dest))
   );
 
-  // Pool all packages and tag with destination
   const pooled: WeekendPackage[] = allResults.flat();
-
-  // Sort by total cost
   return pooled.sort((a, b) => a.totalCost - b.totalCost);
 }
 
