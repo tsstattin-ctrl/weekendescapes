@@ -20,7 +20,7 @@ function dedupeByKey(hotels: HotelOption[]): HotelOption[] {
     const k = hotelKey(h);
     if (!seen.has(k)) seen.set(k, h);
   }
-  return [...seen.values()];
+  return Array.from(seen.values());
 }
 
 interface PackageMeta {
@@ -173,7 +173,7 @@ async function executeHotelLedStrategy(
   // Phase 2 — resolve the requested hotel ONCE, against the union of all inventory.
   // (Resolving against every weekend avoids a mis-resolve when the hotel is sold
   // out on the first weekend we happen to look at.)
-  const allCandidates = dedupeByKey([...inventory.values()].flat());
+  const allCandidates = dedupeByKey(Array.from(inventory.values()).flat());
   const match: HotelMatch = query
     ? resolveHotel(query, allCandidates, destination.cityName)
     : { status: 'exact', hotel: allCandidates[0] ?? null, score: 1, alternatives: [] };
